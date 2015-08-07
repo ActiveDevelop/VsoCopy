@@ -59,5 +59,23 @@ Namespace My.Resources
                 resourceCulture = value
             End Set
         End Property
+        
+        '''<summary>
+        '''  Looks up a localized string similar to select * from WorkItemLinks where (Source.[System.TeamProject] = @project and Source.[System.WorkItemType] in group &apos;Microsoft.RequirementCategory&apos; and (Source.[System.IterationPath] = @project or Source.[System.IterationPath] under @project) and Source.[System.AreaPath] under @project) and ([System.Links.LinkType] = &apos;System.LinkTypes.Hierarchy-Forward&apos;) and (Target.[System.WorkItemType] in group &apos;Microsoft.RequirementCategory&apos; and (Target.[System.IterationPath] = @project or Target.[System.IterationPath] u [rest of string was truncated]&quot;;.
+        '''</summary>
+        Friend ReadOnly Property BacklogQuery() As String
+            Get
+                Return ResourceManager.GetString("BacklogQuery", resourceCulture)
+            End Get
+        End Property
+        
+        '''<summary>
+        '''  Looks up a localized string similar to select [System.Id], [System.WorkItemType], [System.Title], [Microsoft.VSTS.Common.BacklogPriority], [System.AssignedTo], [System.State], [Microsoft.VSTS.CMMI.Blocked] from WorkItems where [System.TeamProject] = @project and [System.WorkItemType] in group &apos;Microsoft.TaskCategory&apos; order by [Microsoft.VSTS.Common.BacklogPriority], [System.Id].
+        '''</summary>
+        Friend ReadOnly Property TaskQuery() As String
+            Get
+                Return ResourceManager.GetString("TaskQuery", resourceCulture)
+            End Get
+        End Property
     End Module
 End Namespace
