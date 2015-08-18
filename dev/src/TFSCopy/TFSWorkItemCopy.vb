@@ -1,8 +1,43 @@
 ﻿Imports Microsoft.TeamFoundation.Client
 Imports Microsoft.TeamFoundation.Framework.Common
 Imports Microsoft.TeamFoundation.WorkItemTracking.Client
+Imports TFSCopy
 
 Public Class TFSWorkItemCopy
+
+    Private Class ADWorkItemVersion
+        Public Shared Function FromKeyString(key As String) As ADWorkItemVersion
+            Dim ret As New ADWorkItemVersion
+            Dim vals = key.Split("@"c)
+            If vals.Length <> 2 Then Throw New ArgumentException("key is invalid")
+            ret.ID = Integer.Parse(vals(0))
+            ret.RevIndex = Integer.Parse(vals(1))
+            Return ret
+        End Function
+
+
+        Public Function ToKeyString() As String
+            Return ToKeyString(ID, RevIndex)
+        End Function
+
+        Public Shared Function ToKeyString(sourceID As Integer, revision As Integer) As String
+            Return String.Format("{0:00000000000000000000}@{1:00000000000000000000}", sourceID, revision)
+        End Function
+        Public Shared Function Create(sourceID As Integer, revision As Integer) As ADWorkItemVersion
+            Dim ret As New ADWorkItemVersion
+            ret.ID = sourceID
+            ret.RevIndex = revision
+            Return ret
+        End Function
+
+        Private Sub New()
+        End Sub
+
+
+        Property ID As Integer
+        Property RevIndex As Integer     ' Index der Liste Workitem.Revisions
+    End Class
+
 
     ''' <summary>
     ''' Class is NOT Thread Safe!!!!!!
@@ -28,7 +63,12 @@ Public Class TFSWorkItemCopy
 
         Public Sub StartMapping(sourceID As Integer)
             If myMapping.ContainsKey(sourceID) Then
-                Throw New InvalidOperationException("Mapping already started")
+                Dim val = myMapping.Item(sourceID)
+                If Not val.HasValue Then
+                    Throw New InvalidOperationException("Mapping already started")
+                Else
+                    Throw New InvalidOperationException("Mapping already done")
+                End If
             End If
             myMapping.Add(sourceID, Nothing)
         End Sub
@@ -58,8 +98,73 @@ Public Class TFSWorkItemCopy
             Throw New InvalidOperationException(sourceID & " is not mapped(or finished) yet....")
         End Function
 
+        Private myAnalyzeQueue As New Queue(Of String)
+        Private myAnalyzeQueued As New HashSet(Of String)
+        Private myCopyListSorted As New SortedList(Of String, ADWorkItemVersion)
+        Private myLinkQueue As New Queue(Of Integer)
+        Public Sub Add2AnalyzeQueue(sourceID As Integer, revision As Integer)
+            Dim k = ADWorkItemVersion.ToKeyString(sourceID, revision)
+            If myAnalyzeQueued.Contains(k) Then
+                ' nichts zu tun
+            Else
+                myAnalyzeQueued.Add(k)
+                myAnalyzeQueue.Enqueue(k)
+            End If
+        End Sub
+
+
+
+        Public Sub Add2CopyQueue(sourceID As Integer, RevIndex As Integer)
+            Dim adwi = ADWorkItemVersion.Create(sourceID, RevIndex)
+            If myCopyListSorted.ContainsKey(adwi.ToKeyString) Then
+                ' nothing to do
+            Else
+                SyncLock myCopyListSorted
+                    myCopyListSorted.Add(adwi.ToKeyString, adwi)
+                End SyncLock
+
+            End If
+        End Sub
+
+        Public Function NextAnalyzeItem() As ADWorkItemVersion
+            If myAnalyzeQueue.Count = 0 Then
+                Return Nothing
+            End If
+            Dim k = myAnalyzeQueue.Dequeue
+            Return ADWorkItemVersion.FromKeyString(k)
+        End Function
+
+        Public Function NextCopyItem() As ADWorkItemVersion
+            Dim itm As ADWorkItemVersion = Nothing
+            Do
+                If myCopyListSorted.Count = 0 Then
+                    Return Nothing
+                End If
+                SyncLock myCopyListSorted
+                    Dim minKey = myCopyListSorted.Keys.Min
+                    itm = myCopyListSorted(minKey)
+                    myCopyListSorted.Remove(minKey)
+                End SyncLock
+                If Not IsMapped(itm.ID) Then
+                    ' wurde noch nicht bearbeitet
+                    myLinkQueue.Enqueue(itm.ID)
+                    Return itm
+                Else
+                    ' wurde bereits kopiert -> nichts mehr zu tun
+                End If
+            Loop
+        End Function
+
+        Public Function NextLinkItem() As Integer?
+            If myLinkQueue.Count = 0 Then
+                Return Nothing
+            End If
+            Return myLinkQueue.Dequeue
+        End Function
+
     End Class
 
+    Private Shared ReadOnly Field2Ignore As String() = {"Area ID", "Area Path", "Iteration ID", "Iteration Path"}
 
     Public Shared Sub Copy(sourceTFSCollection As TfsTeamProjectCollection, sourceProject As String, sourceTFSConfigServer As TfsConfigurationServer, destTFSCollection As TfsTeamProjectCollection, destProject As String, destTFSConfigServer As TfsConfigurationServer)
 
@@ -77,12 +182,6 @@ Public Class TFSWorkItemCopy
 
         Dim destWis = New WorkItemStore(destTFSCollection, WorkItemStoreFlags.BypassRules)
 
-        'For Each pitem As Project In destWis.Projects
-        '    Dim types = pitem.WorkItemTypes
-
-        '    Dim a = 5
-        'Next
-
         Dim sourceprojectName = sourceWis.Projects(sourceProject).Name
         Console.Write("Project: ")
         Console.WriteLine(sourceprojectName)
@@ -94,25 +193,72 @@ Public Class TFSWorkItemCopy
 
         Dim tasklist = wiQuery.RunQuery
 
-
         Dim idmapper As New IDMapper
-        'CopyBLIRecursive(sourceWis, sourceProject, tasklist, idmapper, destWis, destProject)
+        'CopyItemsRecursive(sourceWis, sourceProject, tasklist, idmapper, destWis, destProject)
 
 
-        ' BLI Web API - 'CopyBLIRecursive(sourceWis, sourceProject, "   ", 1308, idmapper, destWis, destProject)
+        ' BLI Web API - 'CopyItemsRecursive(sourceWis, sourceProject, "   ", 1308, idmapper, destWis, destProject)
 
-        CopyBLIRecursive(sourceWis, sourceProject, "   ", 2485, idmapper, destWis, destProject)
-        CopyBLIRecursive(sourceWis, sourceProject, "   ", 2301, idmapper, destWis, destProject)
+        'CopyItemsRecursive(sourceWis, sourceProject, "   ", 2485, idmapper, destWis, destProject)
+        'CopyItemsRecursive(sourceWis, sourceProject, "   ", 2301, idmapper, destWis, destProject)
+
+        idmapper.Add2AnalyzeQueue(2485, 0)
+        idmapper.Add2AnalyzeQueue(2301, 0)
+        'idmapper.Add2CopyQueue(1587)
+
+        Do
+            Dim nextID = idmapper.NextAnalyzeItem
+            If nextID Is Nothing Then Exit Do
+            FillDeps(sourceWis, sourceProject, "   ", nextID.ID, nextID.RevIndex, idmapper)
+        Loop
+
+        ' Elemente kopieren
+        Do
+            Dim nextID = idmapper.NextCopyItem
+            If nextID Is Nothing Then Exit Do
+            CopyItemsRecursive(sourceWis, sourceProject, "   ", nextID.ID, nextID.RevIndex, idmapper, destWis, destProject)
+        Loop
+
+        ' und nun die links nachpflegen
+        Do
+            Dim nextID = idmapper.NextLinkItem
+            If Not nextID.HasValue Then Exit Do
+            LinkItems(sourceWis, sourceProject, "   ", nextID.Value, idmapper, destWis, destProject)
+        Loop
+
+        'Dim attachment As New Microsoft.TeamFoundation.WorkItemTracking.Client.Attachment("c:\somefile.txt", "My Comment")
+
+        MessageBox.Show("Done")
     End Sub
 
+    Private Shared Sub FillDeps(sourceWis As WorkItemStore, sourceProject As String, prefix As String, sourceId As Integer, RevIndex As Integer, idmapper As IDMapper)
+        Dim sourceWorkItem As WorkItem
+        sourceWorkItem = sourceWis.GetWorkItem(sourceId)
 
-    Private Shared Sub CopyBLIRecursive(ByVal sourceWis As WorkItemStore, sourceProject As String, ByVal tasklist As WorkItemCollection, idmapper As IDMapper, destWis As WorkItemStore, destProject As String)
-        For Each item As WorkItem In tasklist
-            CopyBLIRecursive(sourceWis, sourceProject, "   ", item.Id, idmapper, destWis, destProject)
+
+        For Each rev As Revision In sourceWorkItem.Revisions
+            idmapper.Add2CopyQueue(sourceWorkItem.Id, rev.Index)
+            If rev.Index = RevIndex Then
+                For Each linked As Link In rev.Links
+                    If linked.BaseType = BaseLinkType.RelatedLink Then
+                        Dim relLink = DirectCast(linked, RelatedLink)
+                        Dim relID = relLink.RelatedWorkItemId
+                        idmapper.Add2AnalyzeQueue(relID, 0)
+                    End If
+                Next
+            Else
+                idmapper.Add2AnalyzeQueue(sourceWorkItem.Id, rev.Index)
+            End If
         Next
     End Sub
 
-    Private Shared Function CopyBLIRecursive(ByVal sourceWis As WorkItemStore, sourceProject As String, ByVal prefix As String, ByVal sourceId As Integer, IDMapper As IDMapper, destWis As WorkItemStore, destProject As String) As WorkItem
+    Private Shared Sub CopyItemsRecursive(ByVal sourceWis As WorkItemStore, sourceProject As String, ByVal tasklist As WorkItemCollection, idmapper As IDMapper, destWis As WorkItemStore, destProject As String)
+        For Each item As WorkItem In tasklist
+            CopyItemsRecursive(sourceWis, sourceProject, "   ", item.Id, 0, idmapper, destWis, destProject)
+        Next
+    End Sub
+
+    Private Shared Function CopyItemsRecursive(ByVal sourceWis As WorkItemStore, sourceProject As String, ByVal prefix As String, ByVal sourceId As Integer, RevIndex As Integer, IDMapper As IDMapper, destWis As WorkItemStore, destProject As String) As WorkItem
 
         Dim sourceWorkItem As WorkItem
         sourceWorkItem = sourceWis.GetWorkItem(sourceId)
@@ -131,123 +277,159 @@ Public Class TFSWorkItemCopy
 
         ret = New WorkItem(destWorkItemType)
 
-        ' Fields prüfen, die in beiden objecten vorhanden sind
-        Dim srcFields = (From itm In sourceWorkItem.Fields.Cast(Of Microsoft.TeamFoundation.WorkItemTracking.Client.Field) Select itm.Name).ToList
-        Dim dstFields = (From itm In ret.Fields.Cast(Of Microsoft.TeamFoundation.WorkItemTracking.Client.Field) Select itm.Name).ToList
-        Dim commonFieldsName = srcFields.Intersect(dstFields).ToList
 
-        'commonFieldsName.Remove("State")            ' e.g. State='Removed' is invalid
-        'commonFieldsName.Remove("Changed By")
-        commonFieldsName.Remove("Area ID")
-        commonFieldsName.Remove("Area Path")
-        commonFieldsName.Remove("Iteration ID")
-        commonFieldsName.Remove("Iteration Path")
+        For Each rev As Revision In sourceWorkItem.Revisions
+            If rev.Index <> RevIndex Then Continue For
 
-        Dim uneditableFields As New Text.StringBuilder()
+            Dim currfulldict As New Dictionary(Of String, Object)
+            Dim currdeltadict As New Dictionary(Of String, Object)
 
-        For Each fname As String In commonFieldsName
-            Dim field = ret.Fields(fname)
-            If field.IsEditable Then
-                field.Value = sourceWorkItem.Fields(fname).Value
-                Dim val = sourceWorkItem.Fields(fname).Value
-                If val Is Nothing Then
-                    val = "null"
-                ElseIf CStr(val) = "" Then
-                    val = """"
+            For Each f As Field In sourceWorkItem.Fields
+                Dim fieldname = f.Name
+                Dim val = rev.Fields(fieldname).Value
+
+                Dim hasChanged = True
+
+                currfulldict.Add(fieldname, val)     ' für den Vergleich brauchen wir immer den aktuellen Wert
+
+                If rev.Index > 0 AndAlso Object.Equals(ret.Fields(fieldname), val) Then
+                    hasChanged = False
                 End If
 
-                Console.WriteLine("{0} := {1}", fname, val)
-            Else
-                'Console.WriteLine("{0} is not editable", fname)
-                uneditableFields.AppendFormat("{0},", fname)
+                If hasChanged Then
+
+                    If fieldname = "Related Link Count" Then
+
+                        Dim revLinkCount = rev.Links.Count
+                        Dim delta As Integer = sourceWorkItem.Links.Count - ret.Links.Count
+
+                        For Each linked As Link In rev.Links
+                            If linked.BaseType = BaseLinkType.RelatedLink Then
+                                Dim relSourceLink = DirectCast(linked, RelatedLink)
+                                Dim idInDest As Integer
+
+                                idInDest = IDMapper.GetMappedID(relSourceLink.RelatedWorkItemId)
+                                Dim newLink As New RelatedLink(idInDest)
+                                Try
+                                    ret.Links.Add(newLink)
+                                Catch ve As Exception When ve.Message.StartsWith("TF237099")        ' TF237099: Duplicate work item link.
+                                    ' nichts zu tun 
+                                End Try
+                            End If
+                        Next
+
+                        Dim delta2 As Integer = sourceWorkItem.Links.Count - ret.Links.Count
+
+                        Dim a = 555
+                        'Dim relSourceIDs As New List(Of Integer)            ' das sind die LinkID's aus der Quelle aber schon in die DestID's überführt.
+                        'For Each linked As Link In sourceWorkItem.Links
+                        '    If linked.BaseType = BaseLinkType.RelatedLink Then
+                        '        Dim relSourceLink = DirectCast(linked, RelatedLink)
+                        '        Dim idInDest = IDMapper.GetMappedID(relSourceLink.RelatedWorkItemId)
+                        '        relSourceIDs.Add(idInDest)
+                        '    End If
+                        'Next
+
+                        'Dim relDestIDs As New List(Of Integer)
+                        'For Each linked As Link In ret.Links
+                        '    If linked.BaseType = BaseLinkType.RelatedLink Then
+                        '        Dim relDestLink = DirectCast(linked, RelatedLink)
+                        '        relDestIDs.Add(relDestLink.RelatedWorkItemId)
+                        '    End If
+                        'Next
+
+                        '' gelöschte links ermitteln
+                        'Dim removed = relDestIDs.Except(relSourceIDs)
+
+                        'Dim itms2remove As New List(Of Link)
+                        'For Each linked As Link In ret.Links
+                        '    If linked.BaseType = BaseLinkType.RelatedLink Then
+                        '        Dim relDestLink = DirectCast(linked, RelatedLink)
+                        '        If removed.Contains(relDestLink.RelatedWorkItemId) Then
+                        '            itms2remove.Add(linked)
+                        '        End If
+                        '    End If
+                        'Next
+
+                        '' neue Links ermitteln
+                        'Dim added = relSourceIDs.Except(relDestIDs)
+
+                        'Dim itms2add As New List(Of Link)
+                        'For Each id In added
+                        '    Dim newLink As New RelatedLink(id)
+                        '    Try
+                        '        ret.Links.Add(newLink)
+                        '    Catch ve As Exception When ve.Message.StartsWith("TF237099")        ' TF237099: Duplicate work item link.
+                        '        ' nichts zu tun 
+                        '    End Try
+                        'Next
+                    ElseIf fieldname = "Attached File Count" Then
+                    ElseIf fieldname = "Hyperlink Count" Then
+                    Else
+                        currdeltadict.Add(fieldname, val)
+                        Dim field = ret.Fields(fieldname)
+                        If field.IsEditable AndAlso Not Field2Ignore.Contains(fieldname) Then
+                            ret.Fields(fieldname).Value = val
+                        End If
+                    End If
+                End If
+            Next
+
+            Dim res = destWis.BatchSave(New WorkItem() {ret})
+            If res.Length > 0 Then
+                ' TODO: Log-Error
+                If Debugger.IsAttached Then
+                    Debugger.Break()
+                End If
             End If
 
         Next
 
-        ''HACK: 
-        'ret.Fields("State").Value = ret.Fields("State").AllowedValues(0)
-        'Dim reasons = ret.Fields("Reason").AllowedValues
-        'Dim val2set As Object = Nothing
-        'If reasons.Count > 0 Then
-        '    val2set = ret.Fields("Reason").AllowedValues(0)
-        'End If
-        'ret.Fields("Reason").Value = val2set
 
+        IDMapper.FinishMapping(sourceId, ret.Id)
 
-        'ret.Fields("Assigned To").Value = Nothing
+        Return ret
+    End Function
 
-        'newWI.Fields("Changed By").Value = Nothing
-        'newWI.Fields("Area ID").Value = Nothing
-        'newWI.Fields("Area Path").Value = Nothing
-        'newWI.Fields("Iteration ID").Value = Nothing
-        'newWI.Fields("Iteration Path").Value = Nothing
+    Private Shared Sub LinkItems(ByVal sourceWis As WorkItemStore, sourceProject As String, ByVal prefix As String, ByVal sourceId As Integer, IDMapper As IDMapper, destWis As WorkItemStore, destProject As String)
 
+        Dim sourceWorkItem As WorkItem = sourceWis.GetWorkItem(sourceId)
 
-        'END HACK
+        If Not IDMapper.IsMapped(sourceId) Then
+            ' TODO
+            ' HACK: why isn't it mapped yet????
+            Return      ' Quickexit
+        End If
 
-        Console.WriteLine("The fields {0} are not editable", uneditableFields.ToString.TrimEnd(","c))
+        Dim destID = IDMapper.GetMappedID(sourceId)
 
-        'For Each linked As Link In sourceWorkItem.Links
-        '    If linked.BaseType = BaseLinkType.RelatedLink Then
-        '        Dim relLink = DirectCast(linked, RelatedLink)
-        '        Dim relID = relLink.RelatedWorkItemId
-        '        If Not IDMapper.IsMapping(relID) AndAlso Not IDMapper.IsMapped(relID) Then
-        '            ' mapping is not active
-        '            Dim subItem = CopyBLIRecursive(sourceWis, sourceProject, prefix + "   ", relID, IDMapper, destWis, destProject)
-        '            If subItem IsNot Nothing Then
-        '                Dim newLink As New RelatedLink(subItem.Id)
-        '                Try
-        '                    ret.Links.Add(newLink)
-        '                Catch ex As Exception When ex.Message.StartsWith("TF237099")
-        '                    'TF237099=Duplicate link to workitem
-        '                    ' we dont care
-        '                End Try
-        '            End If
-        '        ElseIf IDMapper.IsMapped(relID) Then
-        '            Dim linkID = IDMapper.GetMappedID(relID)
-        '            Dim newLink As New RelatedLink(linkID)
-        '            ret.Links.Add(newLink)
+        Dim destWorkItem As WorkItem = destWis.GetWorkItem(destID)
 
-        '        Else
-        '            If relLink.LinkTypeEnd.IsForwardLink Then
-        '                'TODO
-        '                'HACK
-        '                'what to do now....
-        '                Console.WriteLine("Help!!!!!!!!!!!")
-        '            Else
-        '                ' we link "upwards"??? so -> no problem
-        '                Return Nothing
-        '            End If
-        '        End If
-        '    End If
+        For Each linked As Link In sourceWorkItem.Links
+            If linked.BaseType = BaseLinkType.RelatedLink Then
+                Dim relLink = DirectCast(linked, RelatedLink)
 
-        'Next
+                Dim relSourceID = relLink.RelatedWorkItemId
+                Dim relDestID = IDMapper.GetMappedID(relSourceID)
+                Dim newLink As New RelatedLink(relDestID)
+                Try
+                    destWorkItem.Links.Add(newLink)
+                Catch ve As Exception When ve.Message.StartsWith("TF237099")        ' TF237099: Duplicate work item link.
+                    ' nichts zu tun 
+                End Try
+            End If
 
+        Next
 
-
-        'Dim valRes = ret.Validate()
-
-        'For Each invalFieldObj In valRes
-        '    Dim invalField = TryCast(invalFieldObj, Microsoft.TeamFoundation.WorkItemTracking.Client.Field)
-        '    ret.Fields(invalField.Name).Value = Nothing
-
-        '    Console.WriteLine("The Field {0} has an invalid value.", invalField.Name)
-        'Next
-
-
-
-        Dim res = destWis.BatchSave(New WorkItem() {ret})
+        Dim res = destWis.BatchSave(New WorkItem() {destWorkItem})
         If res.Length > 0 Then
             ' TODO: Log-Error
             If Debugger.IsAttached Then
                 Debugger.Break()
             End If
         End If
+    End Sub
 
-        IDMapper.FinishMapping(sourceId, ret.Id)
-
-        Return ret
-    End Function
 
 
     Public Shared Function PrintTrees(ByVal wiStore As WorkItemStore, ByVal wiTrees As WorkItemLinkInfo(), ByVal prefix As String, ByVal sourceId As Integer, ByVal iThis As Integer) As Integer
