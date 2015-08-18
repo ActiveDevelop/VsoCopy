@@ -194,3 +194,6 @@ FakesAssemblies/
 
 # Visual Studio 6 workspace options file
 *.opt
+/dev/src.bak20150807_1356/src
+/dev/src.bak20150810_1741
+/dev/src.bak20150814_1508
