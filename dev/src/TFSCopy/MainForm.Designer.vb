@@ -58,10 +58,10 @@ Partial Class MainForm
         Me.BackupSelectedTreeNodeToolStripMenuItem = New System.Windows.Forms.ToolStripMenuItem()
         Me.TeamCollectionsToolStripMenuItem = New System.Windows.Forms.ToolStripMenuItem()
         Me.WorkItemsAbgleichenToolStripMenuItem = New System.Windows.Forms.ToolStripMenuItem()
-        Me.StatusStrip1 = New System.Windows.Forms.StatusStrip()
-        Me.CurrentTaskItemInfoToolStripStatusLabel = New System.Windows.Forms.ToolStripStatusLabel()
         Me.TestabgleichToolStripMenuItem = New System.Windows.Forms.ToolStripMenuItem()
         Me.Get4CopyToolStripMenuItem = New System.Windows.Forms.ToolStripMenuItem()
+        Me.StatusStrip1 = New System.Windows.Forms.StatusStrip()
+        Me.CurrentTaskItemInfoToolStripStatusLabel = New System.Windows.Forms.ToolStripStatusLabel()
         Me.TabControl1.SuspendLayout()
         Me.TabPage1.SuspendLayout()
         CType(Me.SplitContainer1, System.ComponentModel.ISupportInitialize).BeginInit()
@@ -450,6 +450,18 @@ Partial Class MainForm
         Me.WorkItemsAbgleichenToolStripMenuItem.Size = New System.Drawing.Size(192, 22)
         Me.WorkItemsAbgleichenToolStripMenuItem.Text = "WorkItems abgleichen"
         '
+        'TestabgleichToolStripMenuItem
+        '
+        Me.TestabgleichToolStripMenuItem.Name = "TestabgleichToolStripMenuItem"
+        Me.TestabgleichToolStripMenuItem.Size = New System.Drawing.Size(192, 22)
+        Me.TestabgleichToolStripMenuItem.Text = "Synchronisieren"
+        '
+        'Get4CopyToolStripMenuItem
+        '
+        Me.Get4CopyToolStripMenuItem.Name = "Get4CopyToolStripMenuItem"
+        Me.Get4CopyToolStripMenuItem.Size = New System.Drawing.Size(74, 20)
+        Me.Get4CopyToolStripMenuItem.Text = "Get 4Copy"
+        '
         'StatusStrip1
         '
         Me.StatusStrip1.Items.AddRange(New System.Windows.Forms.ToolStripItem() {Me.CurrentTaskItemInfoToolStripStatusLabel})
@@ -464,18 +476,6 @@ Partial Class MainForm
         Me.CurrentTaskItemInfoToolStripStatusLabel.Name = "CurrentTaskItemInfoToolStripStatusLabel"
         Me.CurrentTaskItemInfoToolStripStatusLabel.Size = New System.Drawing.Size(222, 17)
         Me.CurrentTaskItemInfoToolStripStatusLabel.Text = "CurrentTaskItemInfoToolStripStatusLabel"
-        '
-        'TestabgleichToolStripMenuItem
-        '
-        Me.TestabgleichToolStripMenuItem.Name = "TestabgleichToolStripMenuItem"
-        Me.TestabgleichToolStripMenuItem.Size = New System.Drawing.Size(192, 22)
-        Me.TestabgleichToolStripMenuItem.Text = "Testabgleich"
-        '
-        'Get4CopyToolStripMenuItem
-        '
-        Me.Get4CopyToolStripMenuItem.Name = "Get4CopyToolStripMenuItem"
-        Me.Get4CopyToolStripMenuItem.Size = New System.Drawing.Size(74, 20)
-        Me.Get4CopyToolStripMenuItem.Text = "Get 4Copy"
         '
         'MainForm
         '

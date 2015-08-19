@@ -304,7 +304,6 @@ Public Class MainForm
             wiTrees = wiQuery.RunLinkQuery()
 
             ' Print the trees of user stories with the estimated size of each leaf.
-            PrintTrees(wis, wiTrees, "   ", 0, 0)
         End If
     End Sub
 
@@ -324,78 +323,32 @@ Public Class MainForm
 
     End Sub
 
-    Function PrintTrees(ByVal wiStore As WorkItemStore, ByVal wiTrees As WorkItemLinkInfo(), ByVal prefix As String, ByVal sourceId As Integer, ByVal iThis As Integer) As Integer
+    Private Sub SynchronisierenToolStripMenuItem_Click(sender As Object, e As EventArgs) Handles TestabgleichToolStripMenuItem.Click
 
-        Dim iNext As Integer = 0
+        Dim tpp As New TeamProjectPicker(TeamProjectPickerMode.SingleProject, False)
+        tpp.Text = "QuellServer und Projekt auswähen"
+        Dim res = tpp.ShowDialog()
+        If res <> DialogResult.OK Then Return
+        Dim sourceTfsCollection = tpp.SelectedTeamProjectCollection
 
-        ' Get the parent of this user story, if it has one
-        Dim source As WorkItem = Nothing
+        If sourceTfsCollection Is Nothing OrElse tpp.SelectedProjects.Count = 0 Then Return
+        Dim sourceProj = tpp.SelectedProjects(0)
 
-        If sourceId <> 0 Then
-            source = wiStore.GetWorkItem(wiTrees(iThis).SourceId)
-        End If
-
-        ' Process the items in the list that have the same parent as this user story
-        While (iThis <wiTrees.Length AndAlso wiTrees(iThis).SourceId = sourceId)
-            ' Get this user story
-
-            Dim target As WorkItem
-            target = wiStore.GetWorkItem(wiTrees(iThis).TargetId)
-            Console.Write(prefix)
-            Console.Write(target.Type.Name)
-            Console.Write(":  ")
-            Console.Write(target.Fields("Title").Value)
-            If iThis < (wiTrees.Length - 1) Then
-                If wiTrees(iThis).TargetId = wiTrees(iThis + 1).SourceId Then
-
-                    ' The next item is the user story's child.
-                    Console.WriteLine()
-                    iNext = PrintTrees(wiStore, wiTrees, prefix + "   ", wiTrees(iThis + 1).SourceId, iThis + 1)
-                Else
-
-                    ' The next item is not the user story's child
-                    iNext = iThis + 1
-                End If
-            Else
-                ' This user story is the last one.
-                iNext = iThis + 1
-            End If
-            Console.WriteLine()
-            iThis = iNext
-        End While
-        Return iNext
-    End Function
-
-    Private Sub TestabgleichToolStripMenuItem_Click(sender As Object, e As EventArgs) Handles TestabgleichToolStripMenuItem.Click
-        Dim sourceTfsUri As Uri = New Uri("https://activedevelop.visualstudio.com/")
-        Dim sourceConfigurationServer As TfsConfigurationServer = TfsConfigurationServerFactory.GetConfigurationServer(sourceTfsUri)
-
-        'HACK
-        Dim childrenEnu As Guid() = New Guid() {CatalogResourceTypes.ProjectCollection}
-
-        Dim colls = (From item In sourceConfigurationServer.CatalogNode.QueryChildren(childrenEnu, False, CatalogQueryOptions.None)
-                     Select New TfsCollectionDisplayItem With {.DisplayItem = item.Resource.DisplayName,
-                                                                       .TfsCollection = sourceConfigurationServer.GetTeamProjectCollection(New Guid(item.Resource.Properties("InstanceId")))}).ToList
-        '->HACK
-
-        Dim sourceTfsCollection = colls(0).TfsCollection
+        Dim sourceConfigurationServer As TfsConfigurationServer = sourceTfsCollection.ConfigurationServer
 
 
-        Dim destTfsUri As Uri = New Uri("http://192.168.1.114:8080/tfs")
-        Dim destConfigurationServer As TfsConfigurationServer = TfsConfigurationServerFactory.GetConfigurationServer(destTfsUri)
+        tpp = New TeamProjectPicker(TeamProjectPickerMode.SingleProject, False)
+        tpp.Text = "ZielServer und Projekt auswähen"
+        res = tpp.ShowDialog()
+        If res <> DialogResult.OK Then Return
+        Dim destTfsCollection = tpp.SelectedTeamProjectCollection
 
-        'HACK
-        colls = (From item In destConfigurationServer.CatalogNode.QueryChildren(childrenEnu, False, CatalogQueryOptions.None)
-                 Select New TfsCollectionDisplayItem With {.DisplayItem = item.Resource.DisplayName,
-                                                                       .TfsCollection = destConfigurationServer.GetTeamProjectCollection(New Guid(item.Resource.Properties("InstanceId")))}).ToList
-        '->HACK
+        If destTfsCollection Is Nothing OrElse tpp.SelectedProjects.Count = 0 Then Return
+        Dim destProj = tpp.SelectedProjects(0)
 
-        Dim destTfsCollection = colls(0).TfsCollection
+        Dim destConfigurationServer As TfsConfigurationServer = destTfsCollection.ConfigurationServer
 
-        TFSWorkItemCopy.Copy(sourceTfsCollection, "LSKNSamba", sourceConfigurationServer, destTfsCollection, "Blub", destConfigurationServer)
-
-        Dim aa = 55
-
+        TFSWorkItemCopy.Copy(sourceTfsCollection, sourceProj.Name, sourceConfigurationServer, destTfsCollection, destProj.Name, destConfigurationServer)
     End Sub
 
     Private Sub Get4CopyToolStripMenuItem_Click(sender As Object, e As EventArgs) Handles Get4CopyToolStripMenuItem.Click

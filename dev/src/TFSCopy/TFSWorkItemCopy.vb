@@ -135,7 +135,7 @@ Public Class TFSWorkItemCopy
 
 
         Dim idmapper As New IDMapper
-        'CopyItemsRecursive(sourceWis, sourceProject, tasklist, idmapper, destWis, destProject)
+        CopyItemsRecursive(sourceWis, sourceProject, tasklist, idmapper, destWis, destProject)
 
 
         ' BLI Web API - 'CopyItemsRecursive(sourceWis, sourceProject, "   ", 1308, idmapper, destWis, destProject)
@@ -143,8 +143,8 @@ Public Class TFSWorkItemCopy
         'CopyItemsRecursive(sourceWis, sourceProject, "   ", 2485, idmapper, destWis, destProject)
         'CopyItemsRecursive(sourceWis, sourceProject, "   ", 2301, idmapper, destWis, destProject)
 
-        idmapper.Add2CopyQueue(2485)
-        idmapper.Add2CopyQueue(2301)
+        'idmapper.Add2CopyQueue(2485)
+        'idmapper.Add2CopyQueue(2301)
 
         ' Elemente kopieren
         Do
@@ -164,7 +164,7 @@ Public Class TFSWorkItemCopy
 
     Private Shared Sub CopyItemsRecursive(ByVal sourceWis As WorkItemStore, sourceProject As String, ByVal tasklist As WorkItemCollection, idmapper As IDMapper, destWis As WorkItemStore, destProject As String)
         For Each item As WorkItem In tasklist
-            CopyItemsRecursive(sourceWis, sourceProject, "   ", item.Id, idmapper, destWis, destProject)
+            idmapper.Add2CopyQueue(item.Id)
         Next
     End Sub
 
@@ -212,7 +212,7 @@ Public Class TFSWorkItemCopy
                     val = """"
                 End If
 
-                Console.WriteLine("{0} := {1}", fname, val)
+                'Console.WriteLine("{0} := {1}", fname, val)
             Else
                 'Console.WriteLine("{0} is not editable", fname)
                 uneditableFields.AppendFormat("{0},", fname)
