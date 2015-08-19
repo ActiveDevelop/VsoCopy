@@ -349,6 +349,7 @@ Public Class MainForm
         Dim destConfigurationServer As TfsConfigurationServer = destTfsCollection.ConfigurationServer
 
         TFSWorkItemCopy.Copy(sourceTfsCollection, sourceProj.Name, sourceConfigurationServer, destTfsCollection, destProj.Name, destConfigurationServer)
+        MessageBox.Show("Fertig")
     End Sub
 
     Private Sub Get4CopyToolStripMenuItem_Click(sender As Object, e As EventArgs) Handles Get4CopyToolStripMenuItem.Click
